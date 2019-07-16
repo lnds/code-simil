@@ -18,6 +18,7 @@ class CodeSimil(cli.log.LoggingApp):
         self.lang_files = {}
         self.analysis = {}
         self.process_files = 0
+        self.summary = {}
 
     def process_paths(self, paths):
         for path in paths:
@@ -53,8 +54,11 @@ class CodeSimil(cli.log.LoggingApp):
         try:
             print('process lang', lang, end='\r')
             files = self.lang_files[lang]
-            if len(files) <= 1:
+            files_in_lang = len(files)
+            if files_in_lang <= 1:
                 return
+
+            self.summary[lang] = 0
 
             print("processing lang", lang, len(files), 'files...')
             vectorizer = TfidfVectorizer(input="filename", decode_error='ignore',
@@ -67,10 +71,8 @@ class CodeSimil(cli.log.LoggingApp):
             (n, m) = similarity_matrix.shape
             simils = {}
             for i in range(n):
-                simils[files[i]] = list()
-                for j in range(i+1, n):
-                    if i != j and similarity_matrix[(i, j)] >= self.params.factor:
-                        simils[files[i]].append((str(files[j]), similarity_matrix[(i,j)]))
+                simils[files[i]] = [(str(files[j]), similarity_matrix[(i,j)])
+                                    for j in range(i+1, n) if i != j and similarity_matrix[(i, j)] >= self.params.factor]
 
             for k in simils.keys():
                 if len(simils[k]) > 0:
@@ -78,26 +80,28 @@ class CodeSimil(cli.log.LoggingApp):
                     for (f,s) in simils[k]:
                         print('\t', f, '\t', s)
                     print('\n')
+                    self.summary[lang] += 1
+
             print('\n')
+
         except:
             self.log.warning("couldn't proces lang {}".format(lang))
             pass
 
-    def similar_size(self, file1, file2):
-        a1 = self.analysis[file1]
-        a2 = self.analysis[file2]
-        mc = max(a1.code, a2.code)
-        delta = abs(a1.code - a2.code)
-        f = delta / mc if mc > 0 else 0
-        return f > 0.5
-
+    def show_summary(self):
+        print('lang','\t\t','% over factor')
+        for k in self.summary.keys():
+            files = len(self.lang_files[k])
+            affected = self.summary[k]
+            percent = affected*100.0/files if files > 0 else 0.0
+            print("{}\t\t{}\t{}\t{:6.2f}".format(k, affected, files, percent))
 
     def main(self):
         paths = [Path(p) for p in self.params.paths]
         print("clasifying")
         self.process_paths(paths)
         self.process_langs()
-
+        self.show_summary()
 
 
 
